@@ -91,8 +91,6 @@ loopSounds[MAT_VENT] = loopSounds[MAT_METAL]
 local soundTrSub = Vector(0, 0, 32)
 
 local function PlaySound(ply, mv)
-    -- ply:StopSound(ply.SlideExit or "")
-
     local origin = mv:GetOrigin()
     local filter = nil
 
@@ -134,7 +132,8 @@ local function PlaySound(ply, mv)
     ply.SlideStart = startSnd
 end
 
-local handAnim = CreateClientConVar("cl_slide_vmanip", 0, true, false, "", 0, 1)
+-- Disabled by default because it looks bad with viewmodel tilt.
+local handAnim = CreateClientConVar("cl_slide_vmanip", 0, true, false, "Enables/disables the hand animation when sliding.", 0, 1)
 local startTime = 0
 
 function PLAYER:SlideStart(mv, time)
@@ -161,10 +160,6 @@ function PLAYER:SlideStart(mv, time)
 
     if CLIENT then
         startTime = CurTime()
-    end
-
-    if SERVER or clientFirstPredict then
-        print("started sliding")
     end
 end
 
@@ -216,7 +211,6 @@ exitSounds[MAT_VENT] = exitSounds[MAT_METAL]
 
 local function StopSound(ply, mv)
     ply:StopSound(ply.SlideLoop or "")
-    -- ply:StopSound(ply.SlideStart or "")
 
     local origin = mv:GetOrigin()
     local filter = nil
@@ -243,8 +237,6 @@ local function StopSound(ply, mv)
     local sndSeed = math.Round(util.SharedRandom("CSlide.Exit", 1, #snds))
     local exitSnd = snds[sndSeed]
 
-    print("you are triggering multiple times ", exitSnd)
-
     ply:EmitSound(exitSnd, 75, 100 + math.random(-4, 4), 0.25, CHAN_BODY, 0, 0, filter)
 
     ply.SlideExit = exitSnd
@@ -270,10 +262,6 @@ function PLAYER:SlideCancel(mv)
 
     if CLIENT then
         endTime = CurTime()
-    end
-
-    if SERVER or clientFirstPredict then
-        print("stopped sliding")
     end
 end
 
@@ -369,7 +357,7 @@ local function SlideEffect(ply, mv)
 end
 
 local cf = bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED)
-local enabled = CreateConVar("sv_cslide", 1, cf, "", 0, 1)
+local enabled = CreateConVar("sv_cslide", 1, cf, "Enables/disables sliding for players serverside.", 0, 1)
 local speedCap = CreateConVar("sv_cslide_max_speed", -1, cf, "Limits the max velocity players can reach. Set to 0 for infinite, -1 for auto-calculate.", -1)
 
 -- TODO: real slide sequence via dynabase
@@ -479,8 +467,10 @@ if CLIENT then
             local velocity = ply:GetVelocity()
             local slideAngle = velocity:Angle()
             local slideTime = math.max(0.1, math.sqrt(velocity:Length()) * 0.1)
+            local frac = (ply:GetSlideTime() - CurTime()) / slideTime
 
-            roll = math.Clamp((slideAngle:Right():Dot(angles:Forward()) * 15) * ((ply:GetSlideTime() - CurTime()) / slideTime), -30, 30)
+            -- REFERENCE: https://github.com/ValveSoftware/source-sdk-2013/blob/master/mp/src/game/shared/baseplayer_shared.cpp#L1728
+            roll = math.Clamp((slideAngle:Right():Dot(angles:Forward()) * 15) * frac, -30, 30)
         end
 
         lastRoll = Lerp(math.ease.InSine(t), lastRoll, roll)
@@ -528,7 +518,7 @@ if CLIENT then
         return true, ply
     end
 
-    local vmTilt = CreateClientConVar("cl_cslide_vm", 1, true, false, "Enable viewmodel tilt when sliding.", 0, 1)
+    local vmTilt = CreateClientConVar("cl_cslide_vm", 1, true, false, "Enables/disables viewmodel tilt when sliding.", 0, 1)
     local transitionTime = 0.25
     local originMod = Vector(0, 2, -6)
 
@@ -548,13 +538,13 @@ if CLIENT then
         local posFrac = math.Clamp(math.TimeFraction(time, time + transitionTime, CurTime()), 0, 1)
 
         if !isSliding then
-            -- Opposite of our above posFrac calc
+            -- Opposite of our above posFrac calc, 0 --> 1 to 1 --> 0.
             local maxPos = math.Clamp((endTime - startTime) / transitionTime, 0, 1)
 
             posFrac = math.Clamp(maxPos - posFrac, 0, 1)
         end
 
-        -- comment: optimization :)
+        -- Don't waste resources modifying our vm when the result will be the same.
         if posFrac == 0 then
             return
         end
@@ -565,7 +555,3 @@ if CLIENT then
         ang:RotateAroundAxis(ang:Forward(), Lerp(posProgress, 0, -45))
     end)
 end
-
-concommand.Add("slidestop", function(ply, cmd, args, argStr)
-    ply:SlideCancel()
-end)
