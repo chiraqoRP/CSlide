@@ -254,12 +254,12 @@ local function StopSound(ply, mv)
     ply.SlideExit = exitSnd
 end
 
-local cooldown = 0.5
+local cooldown = CreateConVar("sv_cslide_cooldown", 0.5, cf, "Controls how long players have to wait to slide again.", 0)
 local endTime = 0
 
 function PLAYER:SlideCancel(mv)
     self:SetIsSliding(false)
-    self:SetSlideTime(self:OnGround() and CurTime() + self:GetUnDuckSpeed() + cooldown or 0)
+    self:SetSlideTime(self:IsFlagSet(FL_ONGROUND) and CurTime() + self:GetUnDuckSpeed() + cooldown:GetFloat() or 0)
     self:SetNW2Float("CSlide.LastZ", nil)
     self:RemoveEFlags(EFL_NO_DAMAGE_FORCES)
 
