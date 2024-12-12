@@ -2,21 +2,29 @@ CSlide = true
 
 local ENTITY = FindMetaTable("Entity")
 local PLAYER = FindMetaTable("Player")
+local eGetNW2Bool = ENTITY.GetNW2Bool
 
 function PLAYER:IsSliding()
-    return self:GetNW2Bool("CSlide.IsSliding", false)
+    return eGetNW2Bool(self, "CSlide.IsSliding", false)
 end
+
+local pIsSliding = PLAYER.IsSliding
+local eSetNW2Bool = ENTITY.SetNW2Bool
 
 function PLAYER:SetIsSliding(bSliding)
-    self:SetNW2Bool("CSlide.IsSliding", bSliding)
+    eSetNW2Bool(self, "CSlide.IsSliding", bSliding)
 end
+
+local eGetNW2Float = ENTITY.GetNW2Float
 
 function PLAYER:GetSlideTime()
-    return self:GetNW2Float("CSlide.Time", 0)
+    return eGetNW2Float(self, "CSlide.Time", 0)
 end
 
+local eSetNW2Float = ENTITY.SetNW2Float
+
 function PLAYER:SetSlideTime(flTime)
-    self:SetNW2Float("CSlide.Time", flTime)
+    eSetNW2Float(self, "CSlide.Time", flTime)
 end
 
 local MAT_WATER = 91
@@ -75,15 +83,23 @@ startSounds[MAT_SNOW] = startSounds[MAT_SAND]
 startSounds[MAT_VENT] = startSounds[MAT_METAL]
 
 local loopSounds = {
-    [MAT_CONCRETE] = string.format(dir, "concrete_loop.wav"),
-    [MAT_DIRT] = string.format(dir, "dirt_loop.wav"),
-    [MAT_GRASS] = string.format(dir, "grass_loop.wav"),
-    [MAT_METAL] = string.format(dir, "metal_loop.wav"),
-    [MAT_SAND] = string.format(dir, "sand_loop.wav"),
-    [MAT_SLOSH] = string.format(dir, "mud_loop.wav"),
-    [MAT_WOOD] = string.format(dir, "wood_loop.wav"),
-    [MAT_WATER] = string.format(dir, "water_loop.wav")
+    [MAT_CONCRETE] = string.format(dir, "concrete_loop_01.wav"),
+    [MAT_DIRT] = string.format(dir, "dirt_loop_01.wav"),
+    [MAT_GRASS] = string.format(dir, "grass_loop_01.wav"),
+    [MAT_METAL] = string.format(dir, "metal_loop_01.wav"),
+    [MAT_SAND] = string.format(dir, "sand_loop_01.wav"),
+    [MAT_SLOSH] = string.format(dir, "mud_loop_01.wav"),
+    [MAT_WOOD] = string.format(dir, "wood_loop_01.wav"),
+    [MAT_WATER] = string.format(dir, "water_loop_01.wav")
 }
+
+local function GetSoundFilter(ply, pos)
+    local filter = RecipientFilter()
+    filter:AddPAS(pos)
+    filter:RemovePlayer(ply)
+
+    return filter
+end
 
 loopSounds[MAT_SNOW] = loopSounds[MAT_SAND]
 loopSounds[MAT_VENT] = loopSounds[MAT_METAL]
@@ -95,9 +111,7 @@ local function PlaySound(ply, mv)
     local filter = nil
 
     if SERVER then
-        filter = RecipientFilter()
-        filter:AddPAS(origin)
-        filter:RemovePlayer(ply)
+        filter = GetSoundFilter(ply, origin)
     end
 
     local tr = util.TraceLine({
@@ -216,9 +230,7 @@ local function StopSound(ply, mv)
     local filter = nil
 
     if SERVER then
-        filter = RecipientFilter()
-        filter:AddPAS(origin)
-        filter:RemovePlayer(ply)
+        filter = GetSoundFilter(ply, origin)
     end
 
     local tr = util.TraceLine({
@@ -268,7 +280,7 @@ end
 local moveRW = false
 
 hook.Add("StartCommand", "CSlide.PreventSprint", function(ply, cmd)
-    if !ply:IsSliding() then
+    if !pIsSliding(ply) then
         return
     end
 
@@ -276,10 +288,11 @@ hook.Add("StartCommand", "CSlide.PreventSprint", function(ply, cmd)
     cmd:RemoveKey(IN_SPEED)
     cmd:ClearMovement()
 
-    -- TODO: compare velocity to runspeed
+    -- TODO: Compare to minSpeed if we ever try adding this back.
+    -- Disabled for now, doesn't feel good and reduces responsiveness in my opinion.
     -- local slideEnd = math.max(0.1, ply:GetVelocity():Length() * 0.01)
 
-    -- if (ply:GetSlideTime() - CurTime()) / slideEnd > 0.6 then
+    -- if (ply:GetSlideTime() - CurTime()) / slideEnd >= 0.45 then
     --     cmd:SetButtons(bit.bor(cmd:GetButtons(), IN_DUCK))
     -- end
 end)
@@ -287,7 +300,7 @@ end)
 local IN_MOVE = bit.bor(IN_FORWARD, IN_BACK, IN_MOVELEFT, IN_MOVERIGHT)
 
 local function ShouldStartSlide(ply, mv, cmd, maxSpeed, velLength)
-    if ply:IsSliding() then
+    if pIsSliding(ply) then
         return false
     end
 
@@ -300,7 +313,7 @@ local function ShouldStartSlide(ply, mv, cmd, maxSpeed, velLength)
         return false
     end
 
-    -- WARNING: May be causing prediction issues.
+    -- ISSUE: May be causing prediction issues.
     -- if !ply:IsFlagSet(FL_ANIMDUCKING) then
     --     return false
     -- end
@@ -311,12 +324,6 @@ local function ShouldStartSlide(ply, mv, cmd, maxSpeed, velLength)
         return false
     end
 
-    -- if math.abs(ply:GetWalkSpeed() - maxSpeed) < 25 then
-    --     return false
-    -- end
-
-    -- local crouchMaxSpeed = ply:GetWalkSpeed() * ply:GetCrouchedWalkSpeed()
-
     -- COMMENT:
     local minSpeed = maxSpeed * 0.5 -- (maxSpeed + crouchMaxSpeed) / 2
 
@@ -326,6 +333,44 @@ local function ShouldStartSlide(ply, mv, cmd, maxSpeed, velLength)
     end
 
     return true
+end
+
+local function RefreshLoopSound(ply, origin)
+    if !ply.SlideLoop then
+        return
+    end
+
+    local filter = nil
+
+    if SERVER then
+        filter = GetSoundFilter(ply, origin)
+    end
+
+    local tr = util.TraceLine({
+        start = origin,
+        endpos = origin - soundTrSub,
+        filter = ply
+    })
+
+    local loopSnd = loopSounds[tr.MatType] or loopSounds[MAT_CONCRETE]
+    local inWater = bit.band(util.PointContents(tr.HitPos), CONTENTS_WATER) == CONTENTS_WATER
+
+    if inWater then
+        loopSnd = loopSounds[MAT_WATER]
+    end
+
+    local clientFirstPredict = CLIENT and IsFirstTimePredicted()
+
+    if !clientFirstPredict or loopSnd == ply.SlideLoop then
+        return
+    end
+
+    ply:StopSound(ply.SlideLoop)
+
+    -- FIXME: Fails to loop(?)
+    ply:EmitSound(loopSnd, 60, 100, 0.25, CHAN_AUTO, 0, 0, filter)
+
+    ply.SlideLoop = loopSnd
 end
 
 local function SlideEffect(ply, mv)
@@ -356,6 +401,8 @@ local function SlideEffect(ply, mv)
     util.Effect("slidedust", effect, true, filter)
 end
 
+local pGetWalkSpeed = PLAYER.GetWalkSpeed
+local pGetRunSpeed = PLAYER.GetRunSpeed
 local cf = bit.bor(FCVAR_ARCHIVE, FCVAR_REPLICATED)
 local enabled = CreateConVar("sv_cslide", 1, cf, "Enables/disables sliding for players serverside.", 0, 1)
 local speedCap = CreateConVar("sv_cslide_max_speed", -1, cf, "Limits the max velocity players can reach. Set to 0 for infinite, -1 for auto-calculate.", -1)
@@ -370,7 +417,7 @@ hook.Add("SetupMove", "CSlide", function(ply, mv, cmd)
         moveRW = GetConVar("sv_kait_enabled") or GetConVar("kait_movement_enabled")
     end
 
-    local runSpeed = ply:GetRunSpeed()
+    local runSpeed = pGetRunSpeed(ply)
     local moveRWEnabled = moveRW and moveRW:GetBool()
 
     -- WORKAROUND: Movement reworked mults run speed by 1.5 for some reason.
@@ -378,11 +425,12 @@ hook.Add("SetupMove", "CSlide", function(ply, mv, cmd)
         runSpeed = runSpeed / 1.5
     end
 
+    local isSliding = pIsSliding(ply)
     local velocity = mv:GetVelocity()
     local velLength = velocity:Length()
-    local walkSpeed = ply:GetWalkSpeed()
+    local walkSpeed = pGetWalkSpeed(ply)
 
-    if !ply:IsSliding() then
+    if !isSliding then
         local shouldSlide = ShouldStartSlide(ply, mv, cmd, runSpeed, velLength)
 
         if !shouldSlide then
@@ -392,13 +440,19 @@ hook.Add("SetupMove", "CSlide", function(ply, mv, cmd)
         local slideSpeed = velLength / walkSpeed
 
         ply:SlideStart(mv, slideSpeed)
+
+        isSliding = true
     end
 
-    if !ply:IsSliding() then
+    if !isSliding then
         return
     end
 
     local origin = mv:GetOrigin()
+
+    -- If the material we're on changes, kill the current loop sound and start a new one.
+    RefreshLoopSound(ply, origin)
+
     local lastZ = ply:GetNW2Float("CSlide.LastZ", origin.z - velocity:GetNormalized().z)
 
     -- COMMENT: Controls whether slide time and speed will be increased or decreased.
@@ -438,12 +492,13 @@ hook.Add("SetupMove", "CSlide", function(ply, mv, cmd)
 end)
 
 hook.Add("PlayerFootstep", "CSlide.SilenceFootsteps", function(ply)
-    if ply:IsSliding() then
+    if pIsSliding(ply) then
         return true
     end
 end)
 
 if CLIENT then
+    local pShouldDrawLocalPlayer = PLAYER.ShouldDrawLocalPlayer
     local shouldRoll = CreateClientConVar("cl_cslide_roll", 1, true, false, "Enables/disables view roll when sliding.", 0, 1)
     local lastRoll = 0
     local t = 0.05
@@ -453,9 +508,9 @@ if CLIENT then
             return
         end
 
-        local sliding = ply:IsSliding()
+        local sliding = pIsSliding(ply)
 
-        if ply:ShouldDrawLocalPlayer() or (!sliding and lastRoll == 0) then
+        if pShouldDrawLocalPlayer(ply) or (!sliding and lastRoll == 0) then
             return
         end
 
@@ -477,14 +532,17 @@ if CLIENT then
         angles.r = lastRoll
     end)
 
+    local eGetTable = ENTITY.GetTable
+    local eGetOwner = ENTITY.GetOwner
+
     local function ShouldTilt(wep)
-        local wepTable = wep:GetTable()
+        local wepTable = eGetTable(wep)
 
         if wepTable.SuppressSlidingViewModelTilt then
             return false
         end
 
-        local ply = wep:GetOwner()
+        local ply = eGetOwner(wep)
 
         if !IsValid(ply) or !ply:IsPlayer() then
             return false
@@ -499,7 +557,7 @@ if CLIENT then
             return false
         end
 
-        if string.find(wepTable.Base or "", "bobs_") and wep:GetIronsights() then
+        if string.Left(wepTable.Base or "", 5) == "bobs_" and wep:GetIronsights() then
             return false
         end
 
@@ -533,7 +591,7 @@ if CLIENT then
             return
         end
 
-        local isSliding = owner:IsSliding()
+        local isSliding = pIsSliding(owner)
         local time = isSliding and startTime or endTime
         local posFrac = math.Clamp(math.TimeFraction(time, time + transitionTime, CurTime()), 0, 1)
 
