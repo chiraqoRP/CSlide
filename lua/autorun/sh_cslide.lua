@@ -93,6 +93,8 @@ local loopSounds = {
     [MAT_WATER] = string.format(dir, "water_loop_01.wav")
 }
 
+-- ENT:EmitSound networks to all clients which results in sounds being delayed for the current prediction player.
+-- Denying networking to that player means we can have proper prediction for the sound without doubling when emitting on clientside too.
 local function GetSoundFilter(ply, pos)
     local filter = RecipientFilter()
     filter:AddPAS(pos)
@@ -385,7 +387,7 @@ local function SlideEffect(ply, mv)
         filter = nil
     end
 
-    -- HACK: util.Effect networks to all clients which results in effects being delayed for the current prediction player.
+    -- util.Effect networks to all clients which results in effects being delayed for the current prediction player.
     -- Denying networking to that player means we can have the effect on their client follow their origin without doubling.
     if SERVER and filter then
         filter = RecipientFilter()
