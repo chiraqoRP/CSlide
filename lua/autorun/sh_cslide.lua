@@ -96,6 +96,11 @@ local loopSounds = {
 -- ENT:EmitSound networks to all clients which results in sounds being delayed for the current prediction player.
 -- Denying networking to that player means we can have proper prediction for the sound without doubling when emitting on clientside too.
 local function GetSoundFilter(ply, pos)
+    -- No need for this in SP.
+    if game.SinglePlayer() then
+        return
+    end
+
     local filter = RecipientFilter()
     filter:AddPAS(pos)
     filter:RemovePlayer(ply)
